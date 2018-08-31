@@ -1,0 +1,89 @@
+version: '3'
+
+services: 
+  es_main:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
+    environment:
+      - node.name=es-main
+      - cluster.name=elk-docker-cluster
+      - bootstrap.memory_lock=false 
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    deploy:
+      resources:
+        limits:
+          cpus: '0.40'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    volumes:
+      - es_main:/usr/share/elasticsearch/data
+    networks:
+      - loggingnet
+
+  es_replica_1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
+    environment:
+      - node.name=elk-es-replica-1
+      - cluster.name=elk-docker-cluster
+      - bootstrap.memory_lock=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "discovery.zen.ping.unicast.hosts=es_main"
+    depends_on: 
+      - es_main
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 1024M
+        reservations:
+          cpus: '0.20'
+          memory: 512M
+    volumes:
+      - es_replica:/usr/share/elasticsearch/data
+    networks:
+      - loggingnet
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.4.0
+    environment:
+      - node.name=elk-kibana
+      - ELASTICSEARCH_URL=http://es_main:9200
+    depends_on: 
+      - es_main
+    networks:
+      - loggingnet
+    ports:
+      - 5601:5601
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:6.4.0
+    environment:
+      - node.name=elk-logstash
+      - ELASTICSEARCH_URL=http://es_main:9200
+      - xpack.monitoring.elasticsearch.url=http://es_main:9200
+    depends_on: 
+      - es_main
+    networks:
+      - loggingnet
+    ports:
+      - 9600:9600
+
+
+networks:
+  loggingnet:
+    driver: overlay
+
+volumes:
+  es_main:
+    driver: local
+  es_replica:
+    driver: local
