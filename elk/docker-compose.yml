@@ -1,12 +1,12 @@
 version: '3'
 
 services: 
-  es_main:
+  esmain:
     image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
     environment:
-      - node.name=es-main
+      - node.name=esmain
       - cluster.name=elk-docker-cluster
-      - bootstrap.memory_lock=false 
+      - bootstrap.memory_lock=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ulimits:
       memlock:
@@ -21,20 +21,20 @@ services:
           cpus: '0.25'
           memory: 512M
     volumes:
-      - es_main:/usr/share/elasticsearch/data
+      - esmain:/usr/share/elasticsearch/data
     networks:
       - loggingnet
 
-  es_replica_1:
+  esreplica1:
     image: docker.elastic.co/elasticsearch/elasticsearch:6.4.0
     environment:
-      - node.name=elk-es-replica-1
+      - node.name=esreplica1
       - cluster.name=elk-docker-cluster
       - bootstrap.memory_lock=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - "discovery.zen.ping.unicast.hosts=es_main"
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+      - "discovery.zen.ping.unicast.hosts=esmain"
     depends_on: 
-      - es_main
+      - esmain
     ulimits:
       memlock:
         soft: -1
@@ -48,34 +48,53 @@ services:
           cpus: '0.20'
           memory: 512M
     volumes:
-      - es_replica:/usr/share/elasticsearch/data
+      - esreplica1:/usr/share/elasticsearch/data
     networks:
       - loggingnet
 
-  kibana:
+  kibana1:
     image: docker.elastic.co/kibana/kibana:6.4.0
     environment:
-      - node.name=elk-kibana
-      - ELASTICSEARCH_URL=http://es_main:9200
+      - node.name=kibana1
+      - ELASTICSEARCH_URL=http://esmain:9200
     depends_on: 
-      - es_main
+      - esmain
     networks:
       - loggingnet
     ports:
       - 5601:5601
 
-  logstash:
+  logstash1:
     image: docker.elastic.co/logstash/logstash:6.4.0
     environment:
-      - node.name=elk-logstash
-      - ELASTICSEARCH_URL=http://es_main:9200
-      - xpack.monitoring.elasticsearch.url=http://es_main:9200
+      - node.name=logstash1
+      - ELASTICSEARCH_URL=http://esmain:9200
+      - xpack.monitoring.enable=true
+      - xpack.monitoring.elasticsearch.url=esmain:9200
+      - config.string=input { stdin { } beats { port => 5044 } } output { elasticsearch { hosts => ["http://esmain:9200"] } }
     depends_on: 
-      - es_main
+      - esmain
     networks:
       - loggingnet
     ports:
       - 9600:9600
+
+  beats:
+    image: docker.elastic.co/beats/filebeat:6.4.0
+    environment:
+      - output.logstash.hosts=http://logstash1:5044
+      - filebeat.inputs.type=log
+      - filebeat.inputs.enabled=true
+      - filebeat.inputs.paths=/var/log/*.log*
+    depends_on:
+      - logstash1
+    networks:
+      - loggingnet
+    deploy:
+      mode: global
+    volumes:
+        - /var/log/*.log*:/var/log/*.log*
+    
 
 
 networks:
@@ -83,7 +102,7 @@ networks:
     driver: overlay
 
 volumes:
-  es_main:
+  esmain:
     driver: local
-  es_replica:
+  esreplica1:
     driver: local
